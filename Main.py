@@ -1,6 +1,6 @@
 import multiprocessing
 import sys
-from PyQt6.QtWidgets import QFileDialog, QMessageBox
+from PyQt6.QtWidgets import QFileDialog, QMessageBox, QApplication
 from multiprocessing import set_start_method, Pool
 from Process_data import *
 
@@ -51,9 +51,25 @@ class TaxiApp(QtWidgets.QDialog):
             self.worker.start()
 
     def on_processing_finished(self, df):
-        QMessageBox.information(self, "Zakończono", f"Przetworzono {len(df)} wierszy bez pustych wartości.")
+        self.analiza_window = OknoAnalizy(df)
+        self.analiza_window.show()
+        self.close()
+
+class OknoAnalizy(QtWidgets.QDialog):
+    def __init__(self, df):
+        super().__init__()
+        uic.loadUi("QT_GUI/OknoAnalizy.ui", self)
+        self.df = df
+
+        self.LiczbaKursow.setText(str(len(df)))
+        self.SrOplata.setText(f"{df['fare_amount'].mean():.2f}")
+        self.SrNapiwek.setText(f"{df['tip_amount'].mean():.2f}")
+        self.LKarta.setText(str((df["payment_type"] == 1).sum()))
+        self.LGotowka.setText(str((df["payment_type"] == 2).sum()))
+        self.IloscLotnisk.setText(str((df["airport_fee"] > 0).sum()))
 
 
+        self.PrzyciskZamknij.clicked.connect(QApplication.quit)
 
 
 if __name__ == "__main__":

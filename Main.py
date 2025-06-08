@@ -2,7 +2,30 @@ import sys
 from PyQt6 import QtWidgets, uic, QtCore
 from PyQt6.QtWidgets import QFileDialog, QMessageBox
 import pandas as pd
+from multiprocessing import Process, set_start_method, Pool
+from Process_data import *
 
+class Worker(QtCore.QThread):
+    progress_update = QtCore.pyqtSignal(int)  # sygnał do GUI, żeby aktualizować pasek
+    finished_processing = QtCore.pyqtSignal(pd.DataFrame)  # sygnał z gotowymi danymi
+
+    def __init__(self, file_path):
+        super().__init__()
+        self.file_path = file_path
+
+    def run(self):
+        chunks = list(read_in_chunks(self.file_path))
+        total_chunks = len(chunks)
+        cleaned_chunks = []
+
+        with Pool(processes=4) as pool:
+            for i, result in enumerate(pool.imap(process_chunk, chunks), 1):
+                cleaned_chunks.append(result)
+                progress_percent = int((i / total_chunks) * 100)
+                self.progress_update.emit(progress_percent)
+
+        cleaned_df = pd.concat(cleaned_chunks)
+        self.finished_processing.emit(cleaned_df)
 
 class TaxiApp(QtWidgets.QDialog):
     def __init__(self):
@@ -11,10 +34,7 @@ class TaxiApp(QtWidgets.QDialog):
 
         # Podpięcie przycisku
         self.PrzyciskWczytaj.clicked.connect(self.on_button_clicked)
-
-        self.timer = QtCore.QTimer(self)
-        self.timer.timeout.connect(self.update_progress_bar)
-        self.progress_value = 0
+        self.worker = None
 
     def on_button_clicked(self):
         # Otwórz okno dialogowe do wyboru pliku
@@ -23,22 +43,16 @@ class TaxiApp(QtWidgets.QDialog):
         file_dialog.setNameFilter("Pliki CSV (*.csv)")
         if file_dialog.exec():
             selected_file = file_dialog.selectedFiles()[0]
-            self.show_file_preview(selected_file)
 
-            # Uruchom pasek postępu
-            self.progress_value = 0
-            self.PasekLadowania.setValue(0)
-            self.timer.start(1000)
+            self.worker = Worker(selected_file)
+            self.worker.progress_update.connect(self.PasekLadowania.setValue)
+            self.worker.finished_processing.connect(self.on_processing_finished)
+            self.worker.start()
 
-    def show_file_preview(self, file_path):
-        try:
-            # Wczytaj dane z pliku CSV
-            data = pd.read_csv(file_path)
-            # Pokaż pierwsze 2 linijki w MessageBox
-            preview = data.head(2).to_string(index=False)
-            QMessageBox.information(self, "Podgląd pliku", f"Pierwsze 2 linie:\n{preview}")
-        except Exception as e:
-            QMessageBox.warning(self, "Błąd", f"Nie udało się wczytać pliku: {str(e)}")
+    def on_processing_finished(self, df):
+        QMessageBox.information(self, "Zakończono", f"Przetworzono {len(df)} wierszy bez pustych wartości.")
+
+
 
     def update_progress_bar(self):
         if self.progress_value < 100:
@@ -48,7 +62,9 @@ class TaxiApp(QtWidgets.QDialog):
             self.timer.stop()
 
 
+
 if __name__ == "__main__":
+    set_start_method("spawn")
     app = QtWidgets.QApplication(sys.argv)
     dialog = TaxiApp()
     dialog.show()

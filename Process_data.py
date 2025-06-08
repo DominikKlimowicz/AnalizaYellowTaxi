@@ -7,7 +7,7 @@ def process_chunk(chunk):
     cleaned = chunk.dropna()
     return cleaned
 def read_in_chunks(file_path, chunk_size=10000):
-    for chunk in pd.read_csv(file_path, chunksize=chunk_size):
+    for chunk in pd.read_csv(file_path, chunksize=chunk_size, low_memory=False):
         yield chunk
 
 def count_rows(file_path):

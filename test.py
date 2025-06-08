@@ -1,6 +1,6 @@
 import sys
 from PyQt5.QtWidgets import QApplication, QMainWindow, QMessageBox
-from QT_GUI.ui_glowneOkno import Ui_Dialog  # import konwertowanego pliku
+from QT_GUI.ui_glowneOkno import Ui_QDialog
 
 class TaxiApp(QMainWindow, Ui_MainWindow):
     def __init__(self):

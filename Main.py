@@ -14,8 +14,7 @@ class Worker(QtCore.QThread):
 
     def run(self):
         total_rows = count_rows(self.file_path)
-        chunk_size = 10000
-        total_chunks = (total_rows // chunk_size) + 1
+        total_chunks = (total_rows // 10000) + 1
 
         chunk_generator = read_in_chunks(self.file_path)
         cleaned_chunks = []

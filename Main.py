@@ -1,8 +1,7 @@
+import multiprocessing
 import sys
-from PyQt6 import QtWidgets, uic, QtCore
 from PyQt6.QtWidgets import QFileDialog, QMessageBox
-import pandas as pd
-from multiprocessing import Process, set_start_method, Pool
+from multiprocessing import set_start_method, Pool
 from Process_data import *
 
 class Worker(QtCore.QThread):
@@ -14,14 +13,17 @@ class Worker(QtCore.QThread):
         self.file_path = file_path
 
     def run(self):
-        chunks = list(read_in_chunks(self.file_path))
-        total_chunks = len(chunks)
-        cleaned_chunks = []
+        total_rows = count_rows(self.file_path)
+        chunk_size = 10000
+        total_chunks = (total_rows // chunk_size) + 1
 
-        with Pool(processes=4) as pool:
-            for i, result in enumerate(pool.imap(process_chunk, chunks), 1):
-                cleaned_chunks.append(result)
-                progress_percent = int((i / total_chunks) * 100)
+        chunk_generator = read_in_chunks(self.file_path)
+        cleaned_chunks = []
+        num_cores = multiprocessing.cpu_count()
+        with Pool(processes=num_cores) as pool:
+            for i, cleaned_chunk in enumerate(pool.imap(process_chunk, chunk_generator), start=1):
+                cleaned_chunks.append(cleaned_chunk)
+                progress_percent = int(i / total_chunks * 100)
                 self.progress_update.emit(progress_percent)
 
         cleaned_df = pd.concat(cleaned_chunks)
@@ -52,14 +54,6 @@ class TaxiApp(QtWidgets.QDialog):
     def on_processing_finished(self, df):
         QMessageBox.information(self, "Zakończono", f"Przetworzono {len(df)} wierszy bez pustych wartości.")
 
-
-
-    def update_progress_bar(self):
-        if self.progress_value < 100:
-            self.progress_value += 10
-            self.PasekLadowania.setValue(self.progress_value)
-        else:
-            self.timer.stop()
 
 
 

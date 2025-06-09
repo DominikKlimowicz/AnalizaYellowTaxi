@@ -41,8 +41,10 @@ class Worker(QtCore.QThread):
             'sum_tip_amount': 0.0,
             'card_payments': 0,
             'cash_payments': 0,
-            'airport_fees_count': 0
+            'airport_fees_count': 0,
         }
+
+        all_suspicious_trips = []
 
         num_cores = multiprocessing.cpu_count()
 
@@ -58,6 +60,7 @@ class Worker(QtCore.QThread):
                 total_stats['card_payments'] += chunk_stats['card_payments']
                 total_stats['cash_payments'] += chunk_stats['cash_payments']
                 total_stats['airport_fees_count'] += chunk_stats['airport_fees_count']
+                all_suspicious_trips.extend(chunk_stats.get('suspicious_trips', []))  # Dodano .get z wartością domyślną
 
                 # Aktualizacja paska postępu
                 if total_chunks > 0:
@@ -77,7 +80,8 @@ class Worker(QtCore.QThread):
                                                                                          'num_trips'] > 0 else 0.0,
             'LKarta': total_stats['card_payments'],
             'LGotowka': total_stats['cash_payments'],
-            'IloscLotnisk': total_stats['airport_fees_count']
+            'IloscLotnisk': total_stats['airport_fees_count'],
+            'PodejrzanePrzejazdy': all_suspicious_trips
         }
 
         # Zakończenie: Emitujemy tylko final_stats
@@ -107,12 +111,11 @@ class TaxiApp(QtWidgets.QDialog):
         if file_dialog.exec():
             selected_file = file_dialog.selectedFiles()[0]
 
-            # Wymagany import os do walidacji
-            import os  # Dodaj to na początku Main.py, jeśli go tam nie ma
             if not selected_file or not os.path.exists(selected_file) or os.path.getsize(selected_file) == 0:
                 QMessageBox.warning(self, "Błąd pliku", "Wybrany plik jest pusty lub nie istnieje.")
                 return
 
+            self.file_path = selected_file
             self.worker = Worker(selected_file)
             self.worker.progress_update.connect(self.PasekLadowania.setValue)
             # Teraz finished_processing emituje tylko słownik stats
@@ -123,8 +126,14 @@ class TaxiApp(QtWidgets.QDialog):
 
     # Zmieniamy sygnaturę funkcji, aby przyjmowała tylko stats
     def on_processing_finished(self, stats):
-        # Przekazujemy tylko stats do nowego okna
-        # Usunęliśmy df z argumentów, bo już go nie przekazujemy
+        QMessageBox.information(self, "Zakończono", "Przetwarzanie danych zakończone. Generowanie raportu.")
+
+        # Wywołaj funkcję generującą raport
+        report_path = generate_report(stats, self.file_path)
+        if report_path:
+            QMessageBox.information(self, "Raport", f"Raport wygenerowany: {report_path}")
+        else:
+            QMessageBox.warning(self, "Błąd Raportu", "Nie udało się wygenerować raportu.")
         self.analiza_window = OknoAnalizy(stats)
         self.analiza_window.show()
         self.close()

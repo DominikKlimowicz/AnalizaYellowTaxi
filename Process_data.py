@@ -15,18 +15,10 @@ def count_rows(file_path):
 
 
 def process_chunk(chunk_df):
-    """
-    Funkcja przetwarzająca pojedynczy chunk danych i obliczająca częściowe statystyki.
-    Zwraca słownik z sumami/licznikami dla tego chunka.
-    """
-    # WAŻNE: Dostosuj to do Twoich KOLUMN i logiki czyszczenia
-    # Usuwamy wiersze z wartościami NaN w kolumnach kluczowych
     required_columns = ['fare_amount', 'tip_amount', 'payment_type', 'airport_fee']
     existing_required_columns = [col for col in required_columns if col in chunk_df.columns]
 
     if not existing_required_columns:
-        # Jeśli brakuje kluczowych kolumn, zwracamy puste statystyki dla tego chunka
-        # W rzeczywistości, możesz chcieć logować błąd lub inaczej obsługiwać.
         return {
             'num_trips': 0,
             'sum_fare_amount': 0.0,
@@ -36,8 +28,6 @@ def process_chunk(chunk_df):
             'airport_fees_count': 0
         }
 
-    # Wykonaj oczyszczanie danych na chunku (np. usunięcie NaN, filtracja)
-    # To jest kluczowe dla jakości danych. Dopasuj do swoich potrzeb.
     cleaned_chunk = chunk_df.dropna(subset=existing_required_columns)
 
     suspicious_trips_in_chunk = []
@@ -47,11 +37,7 @@ def process_chunk(chunk_df):
             'payment_type' in cleaned_chunk.columns:
 
         card_payments_df = cleaned_chunk[cleaned_chunk['payment_type'] == 1]
-
-        # Upewnij się, że fare_amount jest większe od 0
         card_payments_df = card_payments_df[card_payments_df['fare_amount'] > 0]
-
-        # Warunek dla "dużych" kwot (np. powyżej 40 PLN)
         min_fare_amount_for_suspicious = 40
 
 
@@ -60,21 +46,14 @@ def process_chunk(chunk_df):
             (card_payments_df['fare_amount'] >= min_fare_amount_for_suspicious)
             ]
 
-        # Konwertuj znalezione wiersze na listę słowników, aby łatwo je przekazać
         if not suspicious_high_tips.empty:
             suspicious_trips_in_chunk.extend(
                 suspicious_high_tips[['VendorID','trip_distance', 'fare_amount', 'tip_amount', 'payment_type']].to_dict('records')
             )
 
-    # Przykładowa dodatkowa filtracja:
-    if 'trip_distance' in cleaned_chunk.columns:
-        cleaned_chunk = cleaned_chunk[cleaned_chunk['trip_distance'] > 0]
-
-    # Oblicz częściowe statystyki dla tego ODCZYSZCZONEGO chunka
     num_trips = len(cleaned_chunk)
     sum_fare_amount = cleaned_chunk['fare_amount'].sum() if 'fare_amount' in cleaned_chunk.columns else 0.0
 
-    # ZMIANA: Przenieś filtrowanie card_payments_df na górę, bo jest używane do sum_tip_amount
     card_payments_df = cleaned_chunk[
         cleaned_chunk['payment_type'] == 1] if 'payment_type' in cleaned_chunk.columns else pd.DataFrame()
     sum_tip_amount = card_payments_df['tip_amount'].sum() if 'tip_amount' in card_payments_df.columns else 0.0
@@ -91,20 +70,10 @@ def process_chunk(chunk_df):
         'card_payments': card_payments,
         'cash_payments': cash_payments,
         'airport_fees_count': airport_fees_count,
-        'suspicious_trips': suspicious_trips_in_chunk  # Musi być zawsze zwracane
+        'suspicious_trips': suspicious_trips_in_chunk
     }
 
 def generate_report(stats_data, original_file_path=None):
-    """
-    Generuje plik tekstowy z raportem zawierającym obliczone statystyki.
-    Plik będzie miał nazwę Raport_X.txt, gdzie X to kolejny numer.
-
-    Args:
-        stats_data (dict): Słownik zawierający obliczone statystyki.
-                           Powinien mieć klucze takie jak 'LiczbaKursow', 'SrOplata', itp.
-    Returns:
-        str: Ścieżka do utworzonego pliku raportu.
-    """
     report_directory = "Raporty"
     if not os.path.exists(report_directory):
         try:

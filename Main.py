@@ -6,11 +6,9 @@ from PyQt6 import QtCore, QtWidgets
 from PyQt6.QtWidgets import QFileDialog, QMessageBox, QApplication
 from multiprocessing import set_start_method, Pool
 from Process_data import *
-import pandas as pd
 
 class Worker(QtCore.QThread):
     progress_update = QtCore.pyqtSignal(int)
-    # Zmieniamy sygnał, żeby zwracał TYLKO słownik statystyk, bo nie tworzymy już całego DF
     finished_processing = QtCore.pyqtSignal(dict)
 
     def __init__(self, file_path):
@@ -18,12 +16,11 @@ class Worker(QtCore.QThread):
         self.file_path = file_path
 
     def run(self):
-        # --- ETAP 1: Wczytywanie, czyszczenie i zbieranie statystyk z chunków (równolegle) ---
         try:
             total_rows = count_rows(self.file_path)
         except Exception as e:
             print(f"Błąd podczas zliczania wierszy: {e}. Używam szacowanej liczby chunków.")
-            total_rows = 1  # Domyślna wartość
+            total_rows = 1
 
         chunk_size = 10000
         total_chunks = (total_rows // chunk_size) + (1 if total_rows % chunk_size else 0)
@@ -34,7 +31,6 @@ class Worker(QtCore.QThread):
 
         chunk_generator = read_in_chunks(self.file_path, chunk_size=chunk_size)
 
-        # Inicjalizacja słownika do sumowania statystyk
         total_stats = {
             'num_trips': 0,
             'sum_fare_amount': 0.0,
@@ -51,18 +47,15 @@ class Worker(QtCore.QThread):
         print(f"Rozpoczynam przetwarzanie chunków i agregację statystyk w {num_cores} procesach...")
 
         with Pool(processes=num_cores) as pool:
-            # pool.imap leniwie wywołuje process_chunk dla każdego chunka
             for i, chunk_stats in enumerate(pool.imap(process_chunk, chunk_generator), start=1):
-                # Sumujemy statystyki z każdego chunka
                 total_stats['num_trips'] += chunk_stats['num_trips']
                 total_stats['sum_fare_amount'] += chunk_stats['sum_fare_amount']
                 total_stats['sum_tip_amount'] += chunk_stats['sum_tip_amount']
                 total_stats['card_payments'] += chunk_stats['card_payments']
                 total_stats['cash_payments'] += chunk_stats['cash_payments']
                 total_stats['airport_fees_count'] += chunk_stats['airport_fees_count']
-                all_suspicious_trips.extend(chunk_stats.get('suspicious_trips', []))  # Dodano .get z wartością domyślną
+                all_suspicious_trips.extend(chunk_stats.get('suspicious_trips', []))
 
-                # Aktualizacja paska postępu
                 if total_chunks > 0:
                     progress_percent = int(i / total_chunks * 100)
                 else:
@@ -71,7 +64,6 @@ class Worker(QtCore.QThread):
 
         print("\nPrzetwarzanie chunków i zbieranie statystyk zakończone.")
 
-        # Oblicz średnie na koniec (tylko jeśli num_trips > 0, aby uniknąć dzielenia przez zero)
         final_stats = {
             'LiczbaKursow': total_stats['num_trips'],
             'SrOplata': total_stats['sum_fare_amount'] / total_stats['num_trips'] if total_stats[
@@ -84,7 +76,6 @@ class Worker(QtCore.QThread):
             'PodejrzanePrzejazdy': all_suspicious_trips
         }
 
-        # Zakończenie: Emitujemy tylko final_stats
         self.finished_processing.emit(final_stats)
 
 
@@ -118,17 +109,14 @@ class TaxiApp(QtWidgets.QDialog):
             self.file_path = selected_file
             self.worker = Worker(selected_file)
             self.worker.progress_update.connect(self.PasekLadowania.setValue)
-            # Teraz finished_processing emituje tylko słownik stats
             self.worker.finished_processing.connect(self.on_processing_finished)
             self.worker.start()
         else:
             QMessageBox.information(self, "Anulowano", "Wczytywanie pliku anulowano.")
 
-    # Zmieniamy sygnaturę funkcji, aby przyjmowała tylko stats
     def on_processing_finished(self, stats):
         QMessageBox.information(self, "Zakończono", "Przetwarzanie danych zakończone. Generowanie raportu.")
 
-        # Wywołaj funkcję generującą raport
         report_path = generate_report(stats, self.file_path)
         if report_path:
             QMessageBox.information(self, "Raport", f"Raport wygenerowany: {report_path}")
@@ -139,7 +127,6 @@ class TaxiApp(QtWidgets.QDialog):
         self.close()
 
 class OknoAnalizy(QtWidgets.QDialog):
-    # Zmieniamy konstruktor, aby przyjmował tylko stats
     def __init__(self, stats):
         super().__init__()
         try:
@@ -148,11 +135,8 @@ class OknoAnalizy(QtWidgets.QDialog):
             QMessageBox.critical(self, "Błąd wczytywania UI", f"Nie można załadować pliku UI: QT_GUI/OknoAnalizy.ui\nBłąd: {e}")
             sys.exit(1)
 
-        # Przechowujemy statystyki
         self.stats = stats
 
-        # Ustawiamy wartości w GUI z użyciem słownika stats
-        # Pamiętaj, że klucze w final_stats w Workerze są takie same jak nazwy pól GUI
         self.LiczbaKursow.setText(str(self.stats['LiczbaKursow']))
         self.SrOplata.setText(f"{self.stats['SrOplata']:.2f}")
         self.SrNapiwek.setText(f"{self.stats['SrNapiwek']:.2f}")
